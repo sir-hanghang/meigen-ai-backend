@@ -1,0 +1,26 @@
+name = "meigen-ai-backend"
+main = "src/worker.ts"
+compatibility_date = "2026-05-04"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+SITE_NAME = "Meigen AI"
+APP_ORIGIN = "https://meigenai.org"
+AI_PROVIDER = "openai"
+PAYMENT_PROVIDER = "paypal"
+ANONYMOUS_DAILY_FREE_LIMIT = "3"
+SIGNUP_BONUS_CREDITS = "10"
+CREDITS_PER_GENERATION = "1"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "meigen-ai-db"
+database_id = "2489aea0-cb91-44c1-97fb-a440b242c261"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "meigen-ai-assets"
+
+[[queues.producers]]
+binding = "AI_QUEUE"
+queue = "meigen-ai-queue"
