@@ -8,6 +8,8 @@ import generateRoutes from "./routes/generate";
 import usageRoutes from "./routes/usage";
 import checkoutRoutes from "./routes/checkout";
 import webhookRoutes from "./routes/webhooks";
+import renderRoutes from "./routes/render";
+import templatesRoutes from "./routes/templates";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -32,6 +34,9 @@ app.route("/api/generate", generateRoutes);
 app.route("/api/usage", usageRoutes);
 app.route("/api/checkout", checkoutRoutes);
 app.route("/api/webhooks", webhookRoutes);
+app.route("/api/render", renderRoutes);
+
+app.route("/api/templates", templatesRoutes);
 
 // R2 public access (for card images)
 app.get("/r2/:key{.+}", async (c) => {

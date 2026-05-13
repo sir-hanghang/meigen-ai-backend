@@ -3,7 +3,7 @@ import type { Env } from "../types";
 import { success, error, jsonResponse } from "../lib/response";
 import { getCurrentUser } from "../lib/session";
 import { generateQuote } from "../lib/ai";
-import { renderCardSVG, svgToPng } from "../lib/render";
+import { renderCardSVG, svgToBytes } from "../lib/render";
 import { uploadImage } from "../lib/r2";
 import {
   getCreditBalance,
@@ -18,7 +18,8 @@ const app = new Hono<{ Bindings: Env }>();
 app.post("/", async (c) => {
   const env = c.env;
   const body = await c.req.json<{
-    topic: string;
+    topic?: string;
+    category?: string;
     style?: string;
     length?: string;
     templateId?: string;
@@ -27,10 +28,12 @@ app.post("/", async (c) => {
     clientId?: string;
   }>();
 
-  const { topic, style, length, templateId, brandConfig, size, clientId } = body;
+  // Support both 'topic' (backend native) and 'category' (frontend PRD naming)
+  const topic = body.topic || body.category;
+  const { style, length, templateId, brandConfig, size, clientId } = body;
 
   if (!topic) {
-    return jsonResponse(error("MISSING_TOPIC", "Topic is required"), 400);
+    return jsonResponse(error("MISSING_TOPIC", "Topic or category is required"), 400);
   }
 
   const user = await getCurrentUser(c.req.raw, env);
@@ -142,7 +145,7 @@ app.post("/", async (c) => {
           size,
         });
 
-        const svgBuffer = await svgToPng(renderResult.svg);
+        const svgBuffer = await svgToBytes(renderResult.svg);
         const r2Key = `cards/${jobId}.svg`;
         await uploadImage(env.R2, r2Key, svgBuffer, "image/svg+xml");
 
