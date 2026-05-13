@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import { success, error, jsonResponse } from "../lib/response";
 import { getCurrentUser } from "../lib/session";
-import { generateQuote } from "../lib/ai";
+import { generateQuote, AiProviderError } from "../lib/ai";
 import { renderCardSVG, svgToBytes } from "../lib/render";
 import { uploadImage } from "../lib/r2";
 import {
@@ -181,12 +181,26 @@ app.post("/", async (c) => {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const isProviderOverloaded =
+      err instanceof AiProviderError &&
+      (err.retryable || err.providerCode === "engine_overloaded_error" || err.status === 429);
+
     await db
       .prepare(`UPDATE generation_jobs SET status = 'failed', error_message = ? WHERE id = ?`)
       .bind(message, jobId)
       .run();
 
-    return jsonResponse(error("GENERATION_FAILED", message), 500);
+    if (isProviderOverloaded) {
+      return jsonResponse(
+        error(
+          "AI_OVERLOADED",
+          "The AI service is temporarily busy. Please try again in a few seconds. Your credits were not charged."
+        ),
+        503
+      );
+    }
+
+    return jsonResponse(error("GENERATION_FAILED", "Generation failed. Please try again."), 500);
   }
 });
 

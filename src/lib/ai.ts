@@ -11,6 +11,41 @@ export interface GenerateQuoteOutput {
   author: string;
 }
 
+export class AiProviderError extends Error {
+  status: number;
+  providerCode?: string;
+  retryable: boolean;
+
+  constructor(message: string, status: number, providerCode?: string, retryable = false) {
+    super(message);
+    this.name = "AiProviderError";
+    this.status = status;
+    this.providerCode = providerCode;
+    this.retryable = retryable;
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isRetryableProviderError(status: number, body: string): boolean {
+  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+  return /engine_overloaded|overloaded|rate.?limit|temporarily unavailable/i.test(body);
+}
+
+function extractProviderMessage(body: string): { message: string; code?: string } {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string; type?: string; code?: string } };
+    return {
+      message: parsed.error?.message || body,
+      code: parsed.error?.type || parsed.error?.code,
+    };
+  } catch {
+    return { message: body };
+  }
+}
+
 export async function generateQuote(
   env: Env,
   input: GenerateQuoteInput
@@ -31,45 +66,65 @@ The quote should feel authentic and memorable. The author should be "Meigen AI" 
   const baseUrl = env.OPENAI_BASE_URL || "https://api.openai.com/v1";
   const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "User-Agent": "MeigenAI/1.0",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.8,
-      max_tokens: 256,
-      response_format: { type: "json_object" },
-    }),
-    // @ts-ignore - Cloudflare-specific fetch options
-    cf: {
-      cacheEverything: false,
-      cacheTtl: 0,
-    },
-  });
+  let lastError: AiProviderError | null = null;
+  const maxAttempts = 3;
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenAI API error: ${res.status} ${err}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "User-Agent": "MeigenAI/1.0",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.8,
+        max_tokens: 256,
+        response_format: { type: "json_object" },
+      }),
+      // @ts-ignore - Cloudflare-specific fetch options
+      cf: {
+        cacheEverything: false,
+        cacheTtl: 0,
+      },
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      const retryable = isRetryableProviderError(res.status, body);
+      const provider = extractProviderMessage(body);
+      lastError = new AiProviderError(provider.message, res.status, provider.code, retryable);
+
+      if (retryable && attempt < maxAttempts) {
+        // Keep total added latency low for Workers/mobile UX: ~0.8s + ~1.6s.
+        await sleep(800 * attempt);
+        continue;
+      }
+
+      throw lastError;
+    }
+
+    const data = await res.json() as {
+      choices: Array<{ message: { content: string } }>;
+    };
+
+    const content = data.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error("Empty response from AI provider");
+    }
+
+    try {
+      return JSON.parse(content) as GenerateQuoteOutput;
+    } catch {
+      throw new Error("Invalid JSON response from AI provider");
+    }
   }
 
-  const data = await res.json() as {
-    choices: Array<{ message: { content: string } }>;
-  };
-
-  const content = data.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("Empty response from OpenAI");
-  }
-
-  const parsed = JSON.parse(content) as GenerateQuoteOutput;
-  return parsed;
+  throw lastError || new Error("AI provider request failed");
 }

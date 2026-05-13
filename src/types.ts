@@ -20,6 +20,7 @@ export interface Env {
   SESSION_SECRET: string;
   ADMIN_BOOTSTRAP_TOKEN: string;
   OPENAI_API_KEY: string;
+  OPENAI_BASE_URL: string;
   OPENAI_MODEL: string;
   PAYPAL_CLIENT_ID: string;
   PAYPAL_CLIENT_SECRET: string;
