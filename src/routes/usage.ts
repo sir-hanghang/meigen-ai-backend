@@ -53,8 +53,9 @@ app.get("/", async (c) => {
     return c.json(
       success({
         anonymous: true,
-        dailyLimit,
-        usedToday: used,
+        max_per_day: dailyLimit,
+        used_today: used,
+        remaining: Math.max(0, dailyLimit - used),
         remainingToday: Math.max(0, dailyLimit - used),
       })
     );

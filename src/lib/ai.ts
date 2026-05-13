@@ -28,11 +28,16 @@ The quote should feel authentic and memorable. The author should be "Meigen AI" 
 
   const userPrompt = `Topic: ${input.topic}${input.style ? `\nStyle: ${input.style}` : ""}${input.length ? `\nLength: ${input.length}` : ""}`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const baseUrl = env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+  const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      "User-Agent": "MeigenAI/1.0",
+      "Accept": "application/json",
     },
     body: JSON.stringify({
       model,
@@ -44,6 +49,11 @@ The quote should feel authentic and memorable. The author should be "Meigen AI" 
       max_tokens: 256,
       response_format: { type: "json_object" },
     }),
+    // @ts-ignore - Cloudflare-specific fetch options
+    cf: {
+      cacheEverything: false,
+      cacheTtl: 0,
+    },
   });
 
   if (!res.ok) {

@@ -180,8 +180,8 @@ app.get("/callback/google", async (c) => {
 
   // Set session cookie and redirect
   const headers = new Headers();
-  headers.set("Set-Cookie", setSessionCookie(session));
-  headers.set("Set-Cookie", "oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
+  headers.append("Set-Cookie", setSessionCookie(session));
+  headers.append("Set-Cookie", "oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
   headers.set("Location", returnTo);
 
   return new Response(null, { status: 302, headers });
