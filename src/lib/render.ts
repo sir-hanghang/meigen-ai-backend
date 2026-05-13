@@ -155,14 +155,15 @@ function wrapText(text: string, maxUnits: number, maxLines: number): string[] {
 
 function buildTextLayout(text: string, boxWidth: number, boxHeight: number, preferredFontSize: number, maxLines = 6): TextLayout {
   let fontSize = preferredFontSize;
-  const minFontSize = preferredFontSize * 0.58;
+  const minFontSize = preferredFontSize * 0.52;
+  const widthFactor = 0.98; // Conservative CJK-safe estimate. SVG/browser fonts render Hanzi close to 1em wide.
 
   while (fontSize >= minFontSize) {
-    const maxUnits = boxWidth / (fontSize * 0.58);
+    const maxUnits = boxWidth / (fontSize * widthFactor);
     const lines = wrapText(text, maxUnits, maxLines);
     const lineHeight = fontSize * 1.28;
     const totalHeight = lines.length * lineHeight;
-    const widestLine = Math.max(...lines.map(textUnits), 1) * fontSize * 0.58;
+    const widestLine = Math.max(...lines.map(textUnits), 1) * fontSize * widthFactor;
     if (totalHeight <= boxHeight && widestLine <= boxWidth) {
       return { lines, fontSize, lineHeight };
     }
@@ -171,7 +172,7 @@ function buildTextLayout(text: string, boxWidth: number, boxHeight: number, pref
 
   const lineHeight = minFontSize * 1.28;
   return {
-    lines: wrapText(text, boxWidth / (minFontSize * 0.58), maxLines),
+    lines: wrapText(text, boxWidth / (minFontSize * widthFactor), maxLines),
     fontSize: minFontSize,
     lineHeight,
   };
@@ -201,19 +202,19 @@ function renderTextLines(args: {
 }
 
 function renderCentered(input: RenderCardInput, template: QuoteTemplateDefinition, w: number, h: number) {
-  const fontSize = Math.min(w, h) * 0.055;
-  const quote = `“${input.quote}”`;
+  const fontSize = Math.min(w, h) * 0.048;
+  const quote = input.quote;
   return `<rect x="${w * 0.08}" y="${h * 0.08}" width="${w * 0.84}" height="${h * 0.84}" fill="none" stroke="${template.accentColor}" stroke-width="2" opacity="0.25"/>
-    ${renderTextLines({ text: quote, x: w / 2, y: h * 0.44, width: w * 0.68, height: h * 0.3, fontSize, fill: template.textColor, maxLines: 5 })}
-    <line x1="${w * 0.44}" y1="${h * 0.64}" x2="${w * 0.56}" y2="${h * 0.64}" stroke="${template.accentColor}" stroke-width="2"/>
-    <text x="${w / 2}" y="${h * 0.71}" text-anchor="middle" fill="${template.accentColor}" font-family="Arial, sans-serif" font-size="${fontSize * 0.42}" letter-spacing="3">— ${escapeXml(input.author)}</text>`;
+    ${renderTextLines({ text: quote, x: w / 2, y: h * 0.43, width: w * 0.56, height: h * 0.34, fontSize, fill: template.textColor, maxLines: 6 })}
+    <line x1="${w * 0.44}" y1="${h * 0.66}" x2="${w * 0.56}" y2="${h * 0.66}" stroke="${template.accentColor}" stroke-width="2"/>
+    <text x="${w / 2}" y="${h * 0.73}" text-anchor="middle" fill="${template.accentColor}" font-family="Arial, 'Noto Sans CJK SC', sans-serif" font-size="${fontSize * 0.42}" letter-spacing="2">— ${escapeXml(input.author)}</text>`;
 }
 
 function renderMagazine(input: RenderCardInput, template: QuoteTemplateDefinition, w: number, h: number) {
   const fontSize = Math.min(w, h) * 0.052;
   return `<rect x="${w * 0.06}" y="${h * 0.06}" width="${w * 0.88}" height="${h * 0.12}" fill="#000000" opacity="0.16"/>
     <text x="${w * 0.09}" y="${h * 0.125}" fill="${template.accentColor}" font-family="Arial, sans-serif" font-size="${fontSize * 0.38}" letter-spacing="7">MEIGEN QUOTE</text>
-    ${renderTextLines({ text: `“${input.quote}”`, x: w * 0.1, y: h * 0.48, width: w * 0.76, height: h * 0.32, fontSize, fill: template.textColor, anchor: "start", weight: "600", style: "italic", maxLines: 5 })}
+    ${renderTextLines({ text: input.quote, x: w * 0.1, y: h * 0.48, width: w * 0.76, height: h * 0.32, fontSize, fill: template.textColor, anchor: "start", weight: "600", style: "italic", maxLines: 5 })}
     <line x1="${w * 0.1}" y1="${h * 0.68}" x2="${w * 0.38}" y2="${h * 0.68}" stroke="${template.accentColor}" stroke-width="3"/>
     <text x="${w * 0.1}" y="${h * 0.75}" fill="${template.mutedColor}" font-family="Arial, sans-serif" font-size="${fontSize * 0.38}" letter-spacing="2">WORDS BY ${escapeXml(input.author).toUpperCase()}</text>`;
 }
@@ -222,7 +223,7 @@ function renderLeftBold(input: RenderCardInput, template: QuoteTemplateDefinitio
   const fontSize = Math.min(w, h) * 0.057;
   return `<circle cx="${w * 0.82}" cy="${h * 0.18}" r="${Math.min(w, h) * 0.24}" fill="${template.accentColor}" opacity="0.08"/>
     <rect x="${w * 0.08}" y="${h * 0.2}" width="${w * 0.015}" height="${h * 0.45}" fill="${template.accentColor}"/>
-    ${renderTextLines({ text: `“${input.quote}”`, x: w * 0.14, y: h * 0.44, width: w * 0.7, height: h * 0.32, fontSize, fill: template.textColor, anchor: "start", family: "Georgia, 'Noto Serif SC', 'Noto Sans CJK SC', serif", weight: "700", maxLines: 5 })}
+    ${renderTextLines({ text: input.quote, x: w * 0.14, y: h * 0.44, width: w * 0.7, height: h * 0.32, fontSize, fill: template.textColor, anchor: "start", family: "Georgia, 'Noto Serif SC', 'Noto Sans CJK SC', serif", weight: "700", maxLines: 5 })}
     <text x="${w * 0.14}" y="${h * 0.7}" fill="${template.accentColor}" font-family="Arial, sans-serif" font-size="${fontSize * 0.42}" letter-spacing="4" font-weight="700">${escapeXml(input.author).toUpperCase()}</text>`;
 }
 
@@ -231,7 +232,7 @@ function renderElegantFrame(input: RenderCardInput, template: QuoteTemplateDefin
   return `<rect x="${w * 0.06}" y="${h * 0.06}" width="${w * 0.88}" height="${h * 0.88}" fill="none" stroke="${template.accentColor}" stroke-width="2" opacity="0.45"/>
     <rect x="${w * 0.09}" y="${h * 0.09}" width="${w * 0.82}" height="${h * 0.82}" fill="none" stroke="${template.accentColor}" stroke-width="1" opacity="0.16"/>
     <circle cx="${w / 2}" cy="${h * 0.24}" r="5" fill="${template.accentColor}" opacity="0.65"/>
-    ${renderTextLines({ text: `“${input.quote}”`, x: w / 2, y: h * 0.47, width: w * 0.66, height: h * 0.3, fontSize, fill: template.textColor, style: "italic", maxLines: 5 })}
+    ${renderTextLines({ text: input.quote, x: w / 2, y: h * 0.47, width: w * 0.66, height: h * 0.3, fontSize, fill: template.textColor, style: "italic", maxLines: 5 })}
     <text x="${w / 2}" y="${h * 0.72}" text-anchor="middle" fill="${template.mutedColor}" font-family="Georgia, serif" font-size="${fontSize * 0.42}" letter-spacing="3">— ${escapeXml(input.author)}</text>`;
 }
 

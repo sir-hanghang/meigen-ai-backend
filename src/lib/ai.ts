@@ -57,9 +57,13 @@ export async function generateQuote(
 
   const model = env.OPENAI_MODEL || "gpt-4o-mini";
 
-  const systemPrompt = `You are an expert quote writer. Generate an original, inspiring quote based on the user's topic and preferences. Respond ONLY with a JSON object in this exact format:
-{"quote": "the quote text", "author": "Author Name"}
-The quote should feel authentic and memorable. The author should be "Meigen AI" for original quotes, or a real historical figure if adapting a classic.`;
+  const systemPrompt = `You are a quote curator for a visual quote-card product.
+Prefer a real, widely attributed quote from a known historical figure, writer, philosopher, scientist, artist, entrepreneur, or public figure that matches the user's topic.
+Return the quote in the user's language when a reliable translation is natural; otherwise use the original/common English quote.
+Keep the quote concise enough for a social card: ideally 16-36 Chinese characters or 8-18 English words.
+Do NOT invent a fake attribution. If you cannot identify a suitable real quote, write a concise original quote and set author to "Meigen AI".
+Respond ONLY with a JSON object in this exact format:
+{"quote": "the quote text without surrounding quotation marks", "author": "Real Author Name"}`;
 
   const userPrompt = `Topic: ${input.topic}${input.style ? `\nStyle: ${input.style}` : ""}${input.length ? `\nLength: ${input.length}` : ""}`;
 
