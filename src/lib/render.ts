@@ -62,22 +62,119 @@ function findTemplate(templateId: string): QuoteTemplateDefinition {
   return QUOTE_TEMPLATES.find((t) => t.id === resolvedId) || QUOTE_TEMPLATES[0];
 }
 
-function wrapText(text: string, maxChars: number): string[] {
-  const words = text.trim().replace(/\s+/g, " ").split(" ");
-  const lines: string[] = [];
-  let current = "";
+type TextLayout = {
+  lines: string[];
+  fontSize: number;
+  lineHeight: number;
+};
 
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length > maxChars && current) {
-      lines.push(current);
-      current = word;
+function charWeight(ch: string): number {
+  if (/\s/.test(ch)) return 0.35;
+  // CJK, kana, hangul and full-width punctuation are roughly square.
+  if (/[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af\uff00-\uffef]/.test(ch)) return 1;
+  if (/[MW@#%&]/.test(ch)) return 0.85;
+  if (/[il.,'`!|]/.test(ch)) return 0.32;
+  return 0.58;
+}
+
+function textUnits(text: string): number {
+  return Array.from(text).reduce((sum, ch) => sum + charWeight(ch), 0);
+}
+
+function tokenizeText(text: string): string[] {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  const tokens: string[] = [];
+  let latin = "";
+
+  for (const ch of Array.from(normalized)) {
+    const isLatinWord = /[A-Za-z0-9'’\-]/.test(ch);
+    if (isLatinWord) {
+      latin += ch;
+      continue;
+    }
+    if (latin) {
+      tokens.push(latin);
+      latin = "";
+    }
+    if (/\s/.test(ch)) {
+      tokens.push(" ");
     } else {
-      current = next;
+      tokens.push(ch);
     }
   }
-  if (current) lines.push(current);
-  return lines.slice(0, 6);
+  if (latin) tokens.push(latin);
+  return tokens;
+}
+
+function wrapText(text: string, maxUnits: number, maxLines: number): string[] {
+  const tokens = tokenizeText(text);
+  const lines: string[] = [];
+  let current = "";
+  let currentUnits = 0;
+
+  for (const token of tokens) {
+    const tokenUnits = textUnits(token);
+    const projected = currentUnits + tokenUnits;
+
+    if (projected > maxUnits && current.trim()) {
+      lines.push(current.trim());
+      current = token.trimStart();
+      currentUnits = textUnits(current);
+      if (lines.length >= maxLines) break;
+    } else {
+      current += token;
+      currentUnits = projected;
+    }
+  }
+
+  if (current.trim() && lines.length < maxLines) {
+    lines.push(current.trim());
+  }
+
+  // If a very long unbroken token still overflows, hard-split by characters.
+  return lines.flatMap((line) => {
+    if (textUnits(line) <= maxUnits) return [line];
+    const chunks: string[] = [];
+    let chunk = "";
+    let units = 0;
+    for (const ch of Array.from(line)) {
+      const u = charWeight(ch);
+      if (units + u > maxUnits && chunk) {
+        chunks.push(chunk);
+        chunk = ch;
+        units = u;
+      } else {
+        chunk += ch;
+        units += u;
+      }
+    }
+    if (chunk) chunks.push(chunk);
+    return chunks;
+  }).slice(0, maxLines);
+}
+
+function buildTextLayout(text: string, boxWidth: number, boxHeight: number, preferredFontSize: number, maxLines = 6): TextLayout {
+  let fontSize = preferredFontSize;
+  const minFontSize = preferredFontSize * 0.58;
+
+  while (fontSize >= minFontSize) {
+    const maxUnits = boxWidth / (fontSize * 0.58);
+    const lines = wrapText(text, maxUnits, maxLines);
+    const lineHeight = fontSize * 1.28;
+    const totalHeight = lines.length * lineHeight;
+    const widestLine = Math.max(...lines.map(textUnits), 1) * fontSize * 0.58;
+    if (totalHeight <= boxHeight && widestLine <= boxWidth) {
+      return { lines, fontSize, lineHeight };
+    }
+    fontSize *= 0.92;
+  }
+
+  const lineHeight = minFontSize * 1.28;
+  return {
+    lines: wrapText(text, boxWidth / (minFontSize * 0.58), maxLines),
+    fontSize: minFontSize,
+    lineHeight,
+  };
 }
 
 function renderTextLines(args: {
@@ -85,21 +182,21 @@ function renderTextLines(args: {
   x: number;
   y: number;
   width: number;
+  height: number;
   fontSize: number;
-  lineHeight: number;
   fill: string;
   anchor?: "start" | "middle";
   family?: string;
   weight?: string;
   style?: string;
+  maxLines?: number;
 }) {
-  const maxChars = Math.max(18, Math.floor(args.width / (args.fontSize * 0.52)));
-  const lines = wrapText(args.text, maxChars);
-  const totalHeight = (lines.length - 1) * args.lineHeight;
+  const layout = buildTextLayout(args.text, args.width, args.height, args.fontSize, args.maxLines || 6);
+  const totalHeight = (layout.lines.length - 1) * layout.lineHeight;
   const startY = args.y - totalHeight / 2;
 
-  return `<text x="${args.x}" y="${startY}" text-anchor="${args.anchor || "middle"}" fill="${args.fill}" font-family="${args.family || "Georgia, serif"}" font-size="${args.fontSize}" font-weight="${args.weight || "500"}"${args.style ? ` font-style="${args.style}"` : ""}>
-    ${lines.map((line, i) => `<tspan x="${args.x}" dy="${i === 0 ? 0 : args.lineHeight}">${escapeXml(line)}</tspan>`).join("\n")}
+  return `<text x="${args.x}" y="${startY}" text-anchor="${args.anchor || "middle"}" fill="${args.fill}" font-family="${args.family || "Georgia, 'Noto Serif SC', 'Noto Sans CJK SC', serif"}" font-size="${layout.fontSize}" font-weight="${args.weight || "500"}"${args.style ? ` font-style="${args.style}"` : ""}>
+    ${layout.lines.map((line, i) => `<tspan x="${args.x}" dy="${i === 0 ? 0 : layout.lineHeight}">${escapeXml(line)}</tspan>`).join("\n")}
   </text>`;
 }
 
@@ -107,7 +204,7 @@ function renderCentered(input: RenderCardInput, template: QuoteTemplateDefinitio
   const fontSize = Math.min(w, h) * 0.055;
   const quote = `“${input.quote}”`;
   return `<rect x="${w * 0.08}" y="${h * 0.08}" width="${w * 0.84}" height="${h * 0.84}" fill="none" stroke="${template.accentColor}" stroke-width="2" opacity="0.25"/>
-    ${renderTextLines({ text: quote, x: w / 2, y: h * 0.46, width: w * 0.72, fontSize, lineHeight: fontSize * 1.25, fill: template.textColor })}
+    ${renderTextLines({ text: quote, x: w / 2, y: h * 0.44, width: w * 0.68, height: h * 0.3, fontSize, fill: template.textColor, maxLines: 5 })}
     <line x1="${w * 0.44}" y1="${h * 0.64}" x2="${w * 0.56}" y2="${h * 0.64}" stroke="${template.accentColor}" stroke-width="2"/>
     <text x="${w / 2}" y="${h * 0.71}" text-anchor="middle" fill="${template.accentColor}" font-family="Arial, sans-serif" font-size="${fontSize * 0.42}" letter-spacing="3">— ${escapeXml(input.author)}</text>`;
 }
@@ -116,7 +213,7 @@ function renderMagazine(input: RenderCardInput, template: QuoteTemplateDefinitio
   const fontSize = Math.min(w, h) * 0.052;
   return `<rect x="${w * 0.06}" y="${h * 0.06}" width="${w * 0.88}" height="${h * 0.12}" fill="#000000" opacity="0.16"/>
     <text x="${w * 0.09}" y="${h * 0.125}" fill="${template.accentColor}" font-family="Arial, sans-serif" font-size="${fontSize * 0.38}" letter-spacing="7">MEIGEN QUOTE</text>
-    ${renderTextLines({ text: `“${input.quote}”`, x: w * 0.1, y: h * 0.48, width: w * 0.78, fontSize, lineHeight: fontSize * 1.25, fill: template.textColor, anchor: "start", weight: "600", style: "italic" })}
+    ${renderTextLines({ text: `“${input.quote}”`, x: w * 0.1, y: h * 0.48, width: w * 0.76, height: h * 0.32, fontSize, fill: template.textColor, anchor: "start", weight: "600", style: "italic", maxLines: 5 })}
     <line x1="${w * 0.1}" y1="${h * 0.68}" x2="${w * 0.38}" y2="${h * 0.68}" stroke="${template.accentColor}" stroke-width="3"/>
     <text x="${w * 0.1}" y="${h * 0.75}" fill="${template.mutedColor}" font-family="Arial, sans-serif" font-size="${fontSize * 0.38}" letter-spacing="2">WORDS BY ${escapeXml(input.author).toUpperCase()}</text>`;
 }
@@ -125,7 +222,7 @@ function renderLeftBold(input: RenderCardInput, template: QuoteTemplateDefinitio
   const fontSize = Math.min(w, h) * 0.057;
   return `<circle cx="${w * 0.82}" cy="${h * 0.18}" r="${Math.min(w, h) * 0.24}" fill="${template.accentColor}" opacity="0.08"/>
     <rect x="${w * 0.08}" y="${h * 0.2}" width="${w * 0.015}" height="${h * 0.45}" fill="${template.accentColor}"/>
-    ${renderTextLines({ text: `“${input.quote}”`, x: w * 0.14, y: h * 0.45, width: w * 0.72, fontSize, lineHeight: fontSize * 1.18, fill: template.textColor, anchor: "start", family: "Georgia, serif", weight: "700" })}
+    ${renderTextLines({ text: `“${input.quote}”`, x: w * 0.14, y: h * 0.44, width: w * 0.7, height: h * 0.32, fontSize, fill: template.textColor, anchor: "start", family: "Georgia, 'Noto Serif SC', 'Noto Sans CJK SC', serif", weight: "700", maxLines: 5 })}
     <text x="${w * 0.14}" y="${h * 0.7}" fill="${template.accentColor}" font-family="Arial, sans-serif" font-size="${fontSize * 0.42}" letter-spacing="4" font-weight="700">${escapeXml(input.author).toUpperCase()}</text>`;
 }
 
@@ -134,7 +231,7 @@ function renderElegantFrame(input: RenderCardInput, template: QuoteTemplateDefin
   return `<rect x="${w * 0.06}" y="${h * 0.06}" width="${w * 0.88}" height="${h * 0.88}" fill="none" stroke="${template.accentColor}" stroke-width="2" opacity="0.45"/>
     <rect x="${w * 0.09}" y="${h * 0.09}" width="${w * 0.82}" height="${h * 0.82}" fill="none" stroke="${template.accentColor}" stroke-width="1" opacity="0.16"/>
     <circle cx="${w / 2}" cy="${h * 0.24}" r="5" fill="${template.accentColor}" opacity="0.65"/>
-    ${renderTextLines({ text: `“${input.quote}”`, x: w / 2, y: h * 0.48, width: w * 0.68, fontSize, lineHeight: fontSize * 1.28, fill: template.textColor, style: "italic" })}
+    ${renderTextLines({ text: `“${input.quote}”`, x: w / 2, y: h * 0.47, width: w * 0.66, height: h * 0.3, fontSize, fill: template.textColor, style: "italic", maxLines: 5 })}
     <text x="${w / 2}" y="${h * 0.72}" text-anchor="middle" fill="${template.mutedColor}" font-family="Georgia, serif" font-size="${fontSize * 0.42}" letter-spacing="3">— ${escapeXml(input.author)}</text>`;
 }
 
